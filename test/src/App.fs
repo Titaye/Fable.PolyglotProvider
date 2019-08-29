@@ -46,9 +46,11 @@ let viewLng (i18n:I18n) (model:Model) dispatch =
             par (i18n.nav.hello_name(model.Name))
           ]
       div []
+          [ h2 [] [ par (i18n.nav.template("1", "2", "3") ) ] ]
+      div []
           [ h2 [] [ par (i18n.nav.count(model.Count) ) ]
             input [ Type "text"
-                    DefaultValue model.Count
+                    Value model.Count
                     OnChange (fun ev ->
                       match ev.Value |> System.Double.TryParse with
                       | true, value -> CountUpdated (Some value) |> dispatch

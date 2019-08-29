@@ -13,9 +13,8 @@ module PolyglotProvider =
     open ProviderImplementation.ProvidedTypes
 
     open ProviderDsl
-    open Fable.Core
-    open Fable.Core.JsInterop
     open Fable.SimpleHttp
+    open Fable.Core
 
     open Browser
     open Browser.Types
@@ -26,6 +25,9 @@ module PolyglotProvider =
     let getterCode name =
          //  always return root object
          fun (args: Expr list) -> <@@ %%args.Head @@>
+
+    [<Emit("((x,a)=>{let o=(x||{});o[a[0]]=a[1];return o})($1,$0)")>]
+    let addkv kv o = obj()
 
     let rec makeMember isRoot (ns:string) (name, json) =
         let path = if ns.Length > 0 then ns + "." + name else name
@@ -69,18 +71,18 @@ module PolyglotProvider =
                 [ Method(
                     memberName, args, String, false,
                     (fun args ->
+
                         let fields =
                             args.Tail
                             |> List.mapi (fun i arg ->
                                 match parameterNames.[i] with
-                                | "smart_count" -> <@ "smart_count" ==> (%%arg : obj ) @>
-                                | x -> <@ x ==> (%%arg : System.String ) @>
+                                | "smart_count" -> <@  [| box "smart_count"; (%%arg : obj ) |]@>
+                                | x -> <@ [| box x; (%%arg : System.String ) :> obj |] @>
                                 )
 
                         let prms =
                             fields
-                            |> List.fold (fun state e -> <@ %e::%state @>) <@ [] @>
-                            |> fun x -> <@ createObj %x @>
+                            |> List.fold (fun state e -> <@ addkv %e %state @>) <@ null @>
 
                         <@@ ((%%(args.[0]) : obj) :?> Polyglot).t(path, %prms) @@>
                         )

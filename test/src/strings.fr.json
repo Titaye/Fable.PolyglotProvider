@@ -6,6 +6,7 @@
       "welcome": "Bienvenue"
     },
     "num_cars": "%{smart_count} voiture |||| %{smart_count} voitures",
-    "count": "singulier |||| pluriel"
+    "count": "singulier |||| pluriel",
+    "template": "modèle %{a} %{b} %{c}"
   }
 }
