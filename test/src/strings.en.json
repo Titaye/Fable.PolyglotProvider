@@ -1,0 +1,11 @@
+{
+  "nav": {
+    "hello": "Hello",
+    "hello_name": "Hello, %{name}",
+    "sidebar": {
+      "welcome": "Welcome"
+    },
+    "num_cars": "%{smart_count} car |||| %{smart_count} cars",
+    "count": "singular |||| plural"
+  }
+}
