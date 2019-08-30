@@ -32,8 +32,10 @@ let update (msg:Msg) (model:Model) =
     | CountUpdated cnt -> { model with Count = cnt |> Option.defaultValue 0. }, Cmd.none
 
 let viewLng (i18n:I18n) (model:Model) dispatch =
+
   let par txt =
     p [] [str txt]
+
   div [ ] [
       div []
           [ h2 [] [ par i18n.nav.sidebar.welcome ]
@@ -46,7 +48,15 @@ let viewLng (i18n:I18n) (model:Model) dispatch =
             par (i18n.nav.hello_name(model.Name))
           ]
       div []
-          [ h2 [] [ par (i18n.nav.template("1", "2", "3") ) ] ]
+          [ h2 [] [
+            par (i18n.nav.template("1", "2", "3") )
+            par (i18n.nav.templateOpt(fun opt ->
+              opt.a <- "10"
+              opt.b <- "20"
+              opt.c <- "30"
+              opt
+            ))
+            ] ]
       div []
           [ h2 [] [ par (i18n.nav.count(model.Count) ) ]
             input [ Type "text"

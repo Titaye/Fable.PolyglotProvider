@@ -7,7 +7,9 @@ open ProviderImplementation.ProvidedTypes
 type Member =
     | ChildType of System.Type
     | Property of name: string * typ: ErasedType * isStatic: bool * body: (Expr list -> Expr)
+    | PropertyGetSet of name: string * typ: ErasedType * isStatic: bool * getBody: (Expr list -> Expr) * setBody: (Expr list -> Expr)
     | Method of name: string * args: (string * ErasedType) list * typ: ErasedType * isStatic: bool * body: (Expr list -> Expr)
+    | WithAttrs of m : Member * customAttr : CustomAttributeData []
     | Constructor of args: (string * ErasedType) list * body: (Expr list -> Expr)
 
 type ErasedType =
@@ -22,19 +24,31 @@ type ErasedType =
 
 let addMembers (t: ProvidedTypeDefinition) members =
     for memb in members do
-        let memb: MemberInfo =
+        let rec getMember attr memb : MemberInfo =
             match memb with
+            | WithAttrs (m, attr) -> getMember attr m
             | ChildType t ->
                 upcast t
             | Property(name, typ, isStatic, body) ->
-                upcast ProvidedProperty(name, makeType typ, isStatic = isStatic, getterCode = body)
+                let x = ProvidedProperty(name, makeType typ, isStatic = isStatic, getterCode = body)
+                for a in attr do
+                    x.AddCustomAttribute(a)
+                upcast x
+            | PropertyGetSet(name, typ, isStatic, getBody, setBody ) ->
+                let x = ProvidedProperty(name, makeType typ, isStatic = isStatic, getterCode = getBody, setterCode = setBody)
+                for a in attr do
+                    x.AddCustomAttribute(a)
+                upcast x
             | Method(name, args, typ, isStatic, body) ->
                 let args = args |> List.map (fun (name, t) -> ProvidedParameter(name, makeType t))
-                upcast ProvidedMethod(name, args, makeType typ, isStatic = isStatic, invokeCode = body)  
+                let x = ProvidedMethod(name, args, makeType typ, isStatic = isStatic, invokeCode = body)
+                for a in attr do
+                    x.AddCustomAttribute(a)
+                upcast x
             | Constructor(args, body) ->
                 let args = args |> List.map (fun (name, t) -> ProvidedParameter(name, makeType t))
-                upcast ProvidedConstructor(args, invokeCode = body)  
-        t.AddMember(memb)
+                upcast ProvidedConstructor(args, invokeCode = body)
+        t.AddMember(getMember Array.empty memb)
 
 let makeType = function
     | Any -> typeof<obj>

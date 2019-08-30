@@ -29,6 +29,41 @@ module PolyglotProvider =
     [<Emit("((x,a)=>{let o=(x||{});o[a[0]]=a[1];return o})($1,$0)")>]
     let addkv kv o = obj()
 
+    [<Emit("$1[$0]")>]
+    let getter x self= obj()
+
+    [<Emit("$2[$0] = $1")>]
+    let setter x v self = ()
+
+    [<Emit("(new Object())")>]
+    let createObj () = obj()
+
+    let createOptionType typeName members =
+        let properties =
+            members
+            |> List.map (fun name ->
+                    if name = "smart_count" then
+                        PropertyGetSet (
+                            name
+                            , Any
+                            , false
+                            , fun args -> <@@ getter name (%%args.[0] : obj) @@>
+                            , fun args -> <@@ setter name (%%args.[1] : obj) %%args.[0] @@>
+                        )
+                    else
+                        PropertyGetSet (
+                            name
+                            , String
+                            , false
+                            , fun args -> <@@ getter name (%%args.[0]: obj) |> string @@>
+                            , fun args -> <@@ setter name (%%args.[1]: string) (%%args.[0]: obj) @@>
+                        )
+                )
+        makeCustomType(typeName, properties)
+
+    let callAction prm (x:System.Action<'a>) =
+        x.Invoke(prm)
+
     let rec makeMember isRoot (ns:string) (name, json) =
         let path = if ns.Length > 0 then ns + "." + name else name
         match json with
@@ -61,6 +96,18 @@ module PolyglotProvider =
                 [ Property(memberName, String, false,
                     (fun args -> <@@ ((%%args.[0] : obj) :?> Polyglot).t(path) @@>) ) ]
             | _, _ ->
+
+                let optionsType = createOptionType (firstToUpper name) parameterNames
+                let funcType = typedefof<System.Func<_,_>>
+                let optionsModifierType = funcType.MakeGenericType([| optionsType; optionsType |])
+
+                let methodOpt =
+                    Method(
+                        memberName + "Opt",
+                        [ "options", Custom (optionsModifierType) ]
+                        , String, false,
+                        fun args -> <@@ ((%%(args.[0]) : obj) :?> Polyglot).t(path,(%%args.[1] : System.Func<obj, obj>).Invoke( createObj() )) @@>)
+
                 let args =
                     parameterNames
                     |> Seq.map (function
@@ -68,7 +115,9 @@ module PolyglotProvider =
                         | x -> x, String )
                     |> Seq.toList
 
-                [ Method(
+                [ ChildType optionsType
+                  methodOpt
+                  Method(
                     memberName, args, String, false,
                     (fun args ->
 
