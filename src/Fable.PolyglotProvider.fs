@@ -5,6 +5,87 @@ type EmitAttribute(macro: string) =
 
 namespace Fable
 
+module internal IO =
+    // File watcher implementation taken from FSharp.Data
+    open System
+    open System.IO
+    open System.Collections.Generic
+
+    type private FileWatcher(path) =
+
+        let subscriptions = Dictionary<string, unit -> unit>()
+
+        let getLastWrite() = File.GetLastWriteTime path
+        let mutable lastWrite = getLastWrite()
+
+        let watcher =
+            new FileSystemWatcher(
+                Filter = Path.GetFileName path,
+                Path = Path.GetDirectoryName path,
+                EnableRaisingEvents = true)
+
+        let checkForChanges action _ =
+            let curr = getLastWrite()
+
+            if lastWrite <> curr then
+                // log (sprintf "File %s: %s" action path)
+                lastWrite <- curr
+                // creating a copy since the handler can be unsubscribed during the iteration
+                let handlers = subscriptions.Values |> Seq.toArray
+                for handler in handlers do
+                    handler()
+
+        do
+            watcher.Changed.Add (checkForChanges "changed")
+            watcher.Renamed.Add (checkForChanges "renamed")
+            watcher.Deleted.Add (checkForChanges "deleted")
+
+        member __.Subscribe(name, action) =
+            subscriptions.Add(name, action)
+
+        member __.Unsubscribe(name) =
+            if subscriptions.Remove(name) then
+                // log (sprintf "Unsubscribed %s from %s watcher" name path)
+                if subscriptions.Count = 0 then
+                    // log (sprintf "Disposing %s watcher" path)
+                    watcher.Dispose()
+                    true
+                else
+                    false
+            else
+                false
+
+    let private watchers = Dictionary<string, FileWatcher>()
+
+    // sets up a filesystem watcher that calls the invalidate function whenever the file changes
+    let watchForChanges path (owner, onChange) =
+
+        let watcher =
+
+            lock watchers <| fun () ->
+
+                match watchers.TryGetValue(path) with
+                | true, watcher ->
+
+                    // log (sprintf "Reusing %s watcher" path)
+                    watcher.Subscribe(owner, onChange)
+                    watcher
+
+                | false, _ ->
+
+                    // log (sprintf "Setting up %s watcher" path)
+                    let watcher = FileWatcher path
+                    watcher.Subscribe(owner, onChange)
+                    watchers.Add(path, watcher)
+                    watcher
+
+        { new IDisposable with
+            member __.Dispose() =
+                lock watchers <| fun () ->
+                    if watcher.Unsubscribe(owner) then
+                        watchers.Remove(path) |> ignore
+        }
+
 module PolyglotProvider =
 
     open System.Text.RegularExpressions
@@ -171,39 +252,55 @@ module PolyglotProvider =
         let staticParams = [ProvidedStaticParameter("phrasesFile",typeof<string>)]
         let generator = ProvidedTypeDefinition(asm, ns, "Generator", Some typeof<obj>, isErased = true)
 
+        let watcherSubscriptions = System.Collections.Concurrent.ConcurrentDictionary<string, System.IDisposable>()
+
+        let buildTypes typeName (pVals:obj[]) =
+            match pVals with
+            | [| :? string as arg|] ->
+
+                if Regex.IsMatch(arg, "^https?://") then
+                    async {
+                        let! (status, res) = Http.get arg
+                        if status <> 200 then
+                            return failwithf "URL %s returned %i status code" arg status
+                        return
+                            match parseJson asm ns typeName res with
+                            | Some t -> t
+                            | None -> failwithf "Response from URL %s is not a valid JSON: %s" arg res
+                    } |> Async.RunSynchronously
+                else
+                    let content =
+                        if arg.StartsWith("{") || arg.StartsWith("[") then arg
+                        else
+                            let filepath =
+                                if System.IO.Path.IsPathRooted arg then
+                                    arg
+                                else
+                                    System.IO.Path.GetFullPath(System.IO.Path.Combine(config.ResolutionFolder, arg))
+
+                            let weakRef = System.WeakReference<_>(this)
+
+                            let _  =
+                                watcherSubscriptions.GetOrAdd(
+                                    typeName,
+                                    fun _ -> IO.watchForChanges filepath (typeName + (this.GetHashCode() |> string) , fun () ->
+                                        match weakRef.TryGetTarget() with
+                                        | true, t -> t.Invalidate()
+                                        | _ -> ()))
+
+                            System.IO.File.ReadAllText(filepath,System.Text.Encoding.UTF8)
+
+
+                    match parseJson asm ns typeName content with
+                    | Some t -> t
+                    | None -> failwithf "Local sample is not a valid JSON"
+            | _ -> failwith "unexpected parameter values"
+
+        do this.Disposing.Add(fun _ -> watcherSubscriptions |> Seq.iter ( fun kv -> kv.Value.Dispose()) )
+
         do generator.DefineStaticParameters(
             parameters = staticParams,
-            instantiationFunction = (fun typeName pVals ->
-                    match pVals with
-                    | [| :? string as arg|] ->
-
-                        if Regex.IsMatch(arg, "^https?://") then
-                            async {
-                                let! (status, res) = Http.get arg
-                                if status <> 200 then
-                                    return failwithf "URL %s returned %i status code" arg status
-                                return
-                                    match parseJson asm ns typeName res with
-                                    | Some t -> t
-                                    | None -> failwithf "Response from URL %s is not a valid JSON: %s" arg res
-                            } |> Async.RunSynchronously
-                        else
-                            let content =
-                                if arg.StartsWith("{") || arg.StartsWith("[") then arg
-                                else
-                                    let filepath =
-                                        if System.IO.Path.IsPathRooted arg then
-                                            arg
-                                        else
-                                            System.IO.Path.GetFullPath(System.IO.Path.Combine(config.ResolutionFolder, arg))
-
-                                    System.IO.File.ReadAllText(filepath,System.Text.Encoding.UTF8)
-
-                            match parseJson asm ns typeName content with
-                            | Some t -> t
-                            | None -> failwithf "Local sample is not a valid JSON"
-                    | _ -> failwith "unexpected parameter values"
-                )
+            instantiationFunction = buildTypes
             )
 
         do this.AddNamespace(ns, [generator])
