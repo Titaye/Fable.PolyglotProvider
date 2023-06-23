@@ -5,8 +5,7 @@ Type Provider for https://airbnb.io/polyglot.js/. Use internationalization json 
 ## Testing
 
 ```shell
-npm install
-npm start
+dotnet fsi build.fsx start
 ```
 
 ## Usage

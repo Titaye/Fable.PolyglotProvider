@@ -1,12 +1,17 @@
 {
   "private": true,
   "scripts": {
-    "build": "fable build.fsx --run",
-    "publish": "fable build.fsx --run publish"
+    "postinstall": "dotnet tool restore",
+    "start": "dotnet build src && dotnet fable watch test -s -o dist --run vite",
+    "publish": "dotnet fsi build.fsx publish"
   },
   "dependencies": {
-    "@babel/core": "^7.5.5",
-    "fable-compiler-js": "^1.0.5",
-    "fable-publish-utils": "^1.0.5"
+    "node-polyglot": "^2.5.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^2.1.0",
+    "vite": "^3.2.7"
   }
 }
