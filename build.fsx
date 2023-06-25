@@ -1,9 +1,17 @@
-#r "node_modules/fable-metadata/lib/Fable.Core.dll"
-#load "node_modules/fable-publish-utils/PublishUtils.fs"
+#r "nuget: Fable.PublishUtils, 2.4.0"
+
 open PublishUtils
+
+let args =
+    fsi.CommandLineArgs
+    |> Array.skip 1
+    |> List.ofArray
 
 // run "npm test"
 match args with
+| IgnoreCase "start"::_ ->
+    run "npm install"
+    run "npm start"
 | IgnoreCase "publish"::_ ->
-    pushNuget "src/Fable.PolyglotProvider.fsproj"
+    pushFableNuget "src/Fable.PolyglotProvider.fsproj" [] doNothing
 | _ -> ()

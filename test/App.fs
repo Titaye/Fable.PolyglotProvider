@@ -21,8 +21,8 @@ type Msg =
   | CountUpdated of float option
 
 let init() : Model * Cmd<Msg> =
-  { I18nEn = I18n(Fable.Core.JsInterop.importDefault(__SOURCE_DIRECTORY__ + "/strings.en.json"), "en")
-    I18nFr = I18n(Fable.Core.JsInterop.importDefault(__SOURCE_DIRECTORY__ + "/strings.fr.json"), "fr")
+  { I18nEn = I18n(Fable.Core.JsInterop.importDefault("./strings.en.json"), "en")
+    I18nFr = I18n(Fable.Core.JsInterop.importDefault("./strings.fr.json"), "fr")
     Name = ""
     Count = 0. }, Cmd.none
 
